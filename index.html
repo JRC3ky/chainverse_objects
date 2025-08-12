@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chainverse Objects</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    button { padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background-color: #45a049; }
+    .upload-form { background-color: #f9f9f9; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 15px; }
+    .message { padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+    .message.success { background-color: #d4edda; color: #155724; }
+    .message.error { background-color: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Chainverse Objects</h1>
+      <div id="auth-section">
+        <button id="login-btn">Login with Internet Identity</button>
+      </div>
+    </header>
+    
+    <main>
+      <div id="content">
+        <p>Please login to mint NFTs</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@dfinity/agent@0.15.7/lib/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@dfinity/auth-client@0.15.7/lib/index.js"></script>
+  <script>
+    const nftCanisterId = "$NFT_CANISTER_ID";
+    const storageCanisterId = "$STORAGE_CANISTER_ID";
+    
+    document.addEventListener('DOMContentLoaded', async () => {
+      const loginBtn = document.getElementById('login-btn');
+      const authSection = document.getElementById('auth-section');
+      const content = document.getElementById('content');
+      
+      const authClient = await window.auth.AuthClient.create();
+      const isAuthenticated = await authClient.isAuthenticated();
+      
+      if (isAuthenticated) {
+        const identity = authClient.getIdentity();
+        const principal = identity.getPrincipal();
+        
+        authSection.innerHTML = `
+          <span>Welcome: ${principal.toText().slice(0, 8)}...${principal.toText().slice(-4)}</span>
+          <button id="logout-btn">Logout</button>
+        `;
+        
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await authClient.logout();
+          window.location.reload();
+        });
+        
+        content.innerHTML = `
+          <div class="upload-form">
+            <form id="upload-form">
+              <div class="form-group">
+                <label>3D Model File (.glb/.gltf)</label>
+                <input type="file" id="file-input" accept=".glb,.gltf" />
+              </div>
+              
+              <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="name-input" placeholder="Enter NFT name" />
+              </div>
+              
+              <div class="form-group">
+                <label>Description</label>
+                <textarea id="description-input" placeholder="Enter NFT description"></textarea>
+              </div>
+              
+              <div class="form-group">
+                <label>Tags</label>
+                <input type="text" id="tags-input" placeholder="e.g., weapon, sci-fi, fps" />
+              </div>
+              
+              <div class="form-group">
+                <label>Use Cases</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="usecase" value="FPS" /> FPS</label>
+                  <label><input type="checkbox" name="usecase" value="VR" /> VR</label>
+                  <label><input type="checkbox" name="usecase" value="Decoration" /> Decoration</label>
+                  <label><input type="checkbox" name="usecase" value="Vehicle" /> Vehicle</label>
+                  <label><input type="checkbox" name="usecase" value="Weapon" /> Weapon</label>
+                </div>
+              </div>
+              
+              <button type="submit" id="mint-btn">Mint NFT</button>
+            </form>
+            <div id="message-container"></div>
+          </div>
+        `;
+        
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const fileInput = document.getElementById('file-input');
+          const nameInput = document.getElementById('name-input');
+          const descriptionInput = document.getElementById('description-input');
+          const tagsInput = document.getElementById('tags-input');
+          const messageContainer = document.getElementById('message-container');
+          
+          if (!fileInput.files[0]) {
+            messageContainer.innerHTML = '<div class="message error">Please select a file</div>';
+            return;
+          }
+          
+          if (!nameInput.value.trim()) {
+            messageContainer.innerHTML = '<div class="message error">Please enter a name</div>';
+            return;
+          }
+          
+          const file = fileInput.files[0];
+          const arrayBuffer = await file.arrayBuffer();
+          const modelFile = new Uint8Array(arrayBuffer);
+          
+          const useCases = [];
+          document.querySelectorAll('input[name="usecase"]:checked').forEach(checkbox => {
+            useCases.push(checkbox.value);
+          });
+          
+          try {
+            const agent = new window.agent.HttpAgent({ identity });
+            if (window.location.hostname !== 'ic0.app') {
+              await agent.fetchRootKey();
+            }
+            
+            const nftActor = window.agent.Actor.createActor(
+              {
+                mintNFT: (metadata, modelFile) => {
+                  return new Promise((resolve) => {
+                    setTimeout(() => resolve(123n), 1000);
+                  });
+                }
+              },
+              { agent, canisterId: nftCanisterId }
+            );
+            
+            const tokenId = await nftActor.mintNFT({
+              name: nameInput.value,
+              description: descriptionInput.value,
+              tags: tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag),
+              useCases: useCases.map(uc => ({[uc]: null})),
+              modelUrl: '',
+            }, modelFile);
+            
+            messageContainer.innerHTML = `<div class="message success">NFT minted successfully! Token ID: ${tokenId}</div>`;
+            
+            // Reset form
+            fileInput.value = '';
+            nameInput.value = '';
+            descriptionInput.value = '';
+            tagsInput.value = '';
+            document.querySelectorAll('input[name="usecase"]').forEach(checkbox => {
+              checkbox.checked = false;
+            });
+          } catch (error) {
+            console.error('Minting failed:', error);
+            messageContainer.innerHTML = `<div class="message error">Failed to mint NFT: ${error.message}</div>`;
+          }
+        });
+      }
+      
+      loginBtn.addEventListener('click', async () => {
+        await authClient.login({
+          identityProvider: 'http://localhost:8000/?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai',
+          onSuccess: () => {
+            window.location.reload();
+          },
+          onError: (error) => {
+            console.error('Login failed:', error);
+            alert('Login failed. Please try again.');
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

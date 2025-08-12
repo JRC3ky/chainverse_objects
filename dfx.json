@@ -1,16 +1,24 @@
 {
   "canisters": {
-    "chainverse_objects_backend": {
-      "main": "src/chainverse_objects_backend/main.mo",
+    "nft_canister": {
+      "main": "backend/main.mo",
+      "type": "motoko"
+    },
+    "storage_canister": {
+      "main": "backend/storage.mo",
       "type": "motoko"
     }
   },
   "defaults": {
     "build": {
-      "args": "",
       "packtool": ""
     }
   },
-  "output_env_file": ".env",
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    }
+  },
   "version": 1
 }
